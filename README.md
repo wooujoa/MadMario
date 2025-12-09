@@ -60,7 +60,7 @@
 
 1. **레포지토리 클론**
 ```bash
-   git clone <(https://github.com/wooujoa/MadMario.git)>
+   git clone https://github.com/wooujoa/MadMario.git
    cd MadMario
 ```
 
