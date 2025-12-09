@@ -71,7 +71,7 @@
 
 3. **가상환경 활성화**
 ```bash
-   conda activate mario
+   conda activate mario_env
 ```
 
 ---
