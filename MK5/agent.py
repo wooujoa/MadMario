@@ -1,0 +1,398 @@
+import torch
+from torch import nn
+import copy
+import random, numpy as np
+from pathlib import Path
+import gc
+from collections import deque
+
+
+class MarioNet(nn.Module):
+    """
+    Dueling DQN Architecture
+    Input -> CNN Feature Extractor -> Split into (Value, Advantage) -> Aggregation -> Output
+    """
+    def __init__(self, input_dim, output_dim):
+        super().__init__()
+        c, h, w = input_dim
+
+        if h != 84:
+            raise ValueError(f"Expecting input height: 84, got: {h}")
+        if w != 84:
+            raise ValueError(f"Expecting input width: 84, got: {w}")
+
+        # 1. 공통 CNN 레이어 (Feature Extractor)
+        self.feature_layer = nn.Sequential(
+            nn.Conv2d(in_channels=c, out_channels=32, kernel_size=8, stride=4),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=4, stride=2),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1),
+            nn.ReLU(),
+            nn.Flatten(),
+        )
+
+        # CNN 통과 후 크기: 3136
+        self.fc_input_dim = 3136
+
+        # 2. Value Stream (상태 가치 V(s))
+        self.value_stream = nn.Sequential(
+            nn.Linear(self.fc_input_dim, 512),
+            nn.ReLU(),
+            nn.Linear(512, 1),
+        )
+
+        # 3. Advantage Stream (행동 이점 A(s, a))
+        self.advantage_stream = nn.Sequential(
+            nn.Linear(self.fc_input_dim, 512),
+            nn.ReLU(),
+            nn.Linear(512, output_dim),
+        )
+
+    def forward(self, input, model):
+        # model 인자는 호환성을 위해 남겨두되, 실제로는 사용하지 않음
+        # 입력 -> CNN
+        features = self.feature_layer(input)
+
+        # CNN 특징 -> Value, Advantage로 갈라짐
+        values = self.value_stream(features)          # (Batch, 1)
+        advantages = self.advantage_stream(features)  # (Batch, Actions)
+
+        # 합체 (Aggregation)
+        # Q(s,a) = V(s) + (A(s,a) - Mean(A(s,a)))
+        q_values = values + (advantages - advantages.mean(dim=1, keepdim=True))
+        return q_values
+
+
+class Mario:
+    def __init__(self, state_dim, action_dim, save_dir, checkpoint=None):
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+
+        # 원본 레포 설정
+        self.memory = deque(maxlen=100000)
+        self.batch_size = 32
+
+        self.exploration_rate = 1.0
+        self.exploration_rate_decay = 0.999995
+        self.exploration_rate_min = 0.1
+        self.gamma = 0.9
+
+        self.curr_step = 0               # 환경 step(transition) 카운트
+        self.burnin = 1e5
+        self.learn_every = 3
+        self.sync_every = 5000
+
+        self.save_every = 5e5
+        self.save_dir = save_dir
+
+        # Best checkpoint tracking
+        self.episode_rewards = deque(maxlen=100)
+        self.best_mean_reward = -float("inf")
+        self.current_episode_reward = 0
+
+        self.use_cuda = torch.cuda.is_available()
+
+        if self.use_cuda:
+            print(f"✅ CUDA available: {torch.cuda.get_device_name(0)}")
+        else:
+            print("❌ CUDA not available, using CPU")
+
+        # 네트워크 초기화
+        self.net = MarioNet(self.state_dim, self.action_dim).float()
+        self.target_net = copy.deepcopy(self.net)
+
+        # Target Network 가중치 고정
+        for p in self.target_net.parameters():
+            p.requires_grad = False
+
+        if self.use_cuda:
+            self.net = self.net.to(device="cuda")
+            self.target_net = self.target_net.to(device="cuda")
+
+        print(f"\n⚙️  DUELING DQN Settings (Fixed):")
+        print(f"   Structure: CNN -> Split(Value, Advantage) -> Aggregation")
+        print(f"   Replay buffer: {self.memory.maxlen:,}")
+        print(f"   Batch size: {self.batch_size}")
+        print(f"   Burnin: {int(self.burnin):,}")
+        print(f"   Learn every: {self.learn_every} steps")
+        print(f"   Sync every: {int(self.sync_every):,}")
+        print(f"\n🎯 Exploration:")
+        print(f"   Initial rate: {self.exploration_rate}")
+        print(f"   Decay: {self.exploration_rate_decay}")
+        print(f"   Burn-in 동결: ON ✅")
+        print(f"\n🔧 안정화 기법:")
+        print(f"   Gradient Clipping: max_norm=10.0 ✅")
+        print(f"   Recursion Error Fixed ✅")
+        print(f"\n🏆 Best checkpoint tracking: ON")
+        print(f"📁 Checkpoints: {save_dir}")
+
+        if checkpoint:
+            self.load(checkpoint)
+
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.00025)
+        self.loss_fn = torch.nn.SmoothL1Loss()
+
+    # ------------------------------------------------------------------
+    #  단일 state 버전 (기존 코드 그대로) - eval / 단일 env 용도로 사용
+    # ------------------------------------------------------------------
+    def act(self, state):
+        """
+        Given a single state, choose an epsilon-greedy action.
+        state: (C, H, W) ndarray or torch tensor
+        """
+        # EXPLORE
+        if np.random.rand() < self.exploration_rate:
+            action_idx = np.random.randint(self.action_dim)
+        else:
+            state = torch.FloatTensor(state)
+            if self.use_cuda:
+                state = state.cuda()
+
+            state = state.unsqueeze(0)     # (1, C, H, W)
+            state = state / 255.0
+
+            action_values = self.net(state, model="online")
+            action_idx = torch.argmax(action_values, axis=1).item()
+
+        # Burn-in 이후에만 epsilon 감소
+        if self.curr_step >= self.burnin:
+            self.exploration_rate *= self.exploration_rate_decay
+            self.exploration_rate = max(
+                self.exploration_rate_min, self.exploration_rate
+            )
+
+        self.curr_step += 1
+        return action_idx
+
+    # ------------------------------------------------------------------
+    #  병렬 env 용 배치 버전
+    # ------------------------------------------------------------------
+    def act_batch(self, states):
+        """
+        여러 개의 상태에 대해 한 번에 epsilon-greedy 행동 선택.
+        states: (N, C, H, W) ndarray 또는 리스트
+        return: (N,) ndarray of action indices
+        """
+        states = np.asarray(states)  # (N, C, H, W)
+        num_envs = states.shape[0]
+
+        # 우선 greedy action 계산
+        states_t = torch.FloatTensor(states) / 255.0
+        if self.use_cuda:
+            states_t = states_t.cuda()
+
+        q_values = self.net(states_t, model="online")          # (N, action_dim)
+        greedy_actions = torch.argmax(q_values, dim=1).cpu().numpy()
+
+        # epsilon-greedy 적용 (env 별로 독립적으로 explore)
+        actions = greedy_actions.copy()
+        random_mask = np.random.rand(num_envs) < self.exploration_rate
+        if random_mask.any():
+            actions[random_mask] = np.random.randint(
+                self.action_dim, size=random_mask.sum()
+            )
+
+        # Burn-in 이후에만 epsilon 감소
+        if self.curr_step >= self.burnin:
+            # 한 번의 batch step에서 num_envs개의 transition을 생성하므로
+            # decay를 num_envs번 적용한 것과 동일하게 처리
+            self.exploration_rate *= self.exploration_rate_decay ** num_envs
+            self.exploration_rate = max(
+                self.exploration_rate_min, self.exploration_rate
+            )
+
+        # transition 개수만큼 step 카운트 증가
+        self.curr_step += num_envs
+        return actions
+
+    # ------------------------------------------------------------------
+
+    def cache(self, state, next_state, action, reward, done):
+        """
+        Store the experience to self.memory (replay buffer)
+        """
+        state = np.array(state, dtype=np.uint8)
+        next_state = np.array(next_state, dtype=np.uint8)
+
+        self.memory.append((state, next_state, action, reward, done))
+        self.current_episode_reward += reward
+
+    def recall(self):
+        """
+        Retrieve a batch of experiences from memory
+        """
+        batch = random.sample(self.memory, self.batch_size)
+        state, next_state, action, reward, done = zip(*batch)
+
+        # CPU에서 uint8로 유지
+        state = torch.ByteTensor(np.array(state))
+        next_state = torch.ByteTensor(np.array(next_state))
+
+        action = torch.LongTensor(action)
+        reward = torch.FloatTensor(reward)
+        done = torch.BoolTensor(done)
+
+        # GPU로 이동
+        if self.use_cuda:
+            state = state.cuda()
+            next_state = next_state.cuda()
+            action = action.cuda()
+            reward = reward.cuda()
+            done = done.cuda()
+
+        # float 변환 + 255로 나누기 (0~1 범위)
+        return state.float() / 255.0, next_state.float() / 255.0, action, reward, done
+
+    def td_estimate(self, state, action):
+        """TD Estimate: Q(s,a)"""
+        current_Q = self.net(state, model="online")[
+            np.arange(0, self.batch_size), action
+        ]
+        return current_Q
+
+    @torch.no_grad()
+    def td_target(self, reward, next_state, done):
+        """
+        TD Target using Double DQN (DDQN) logic
+        """
+        # 1. 행동 선택: Online Network 사용
+        next_state_Q = self.net(next_state, model="online")
+        best_action = torch.argmax(next_state_Q, axis=1)
+
+        # 2. 가치 평가: Target Network 사용
+        next_Q = self.target_net(next_state, model="target")[
+            np.arange(0, self.batch_size), best_action
+        ]
+
+        return (reward + (1 - done.float()) * self.gamma * next_Q).float()
+
+    def update_Q_online(self, td_estimate, td_target):
+        """
+        Backpropagate loss through Q_online
+        """
+        loss = self.loss_fn(td_estimate, td_target)
+        self.optimizer.zero_grad()
+        loss.backward()
+
+        # Gradient Clipping
+        torch.nn.utils.clip_grad_norm_(self.net.parameters(), max_norm=10.0)
+
+        self.optimizer.step()
+        return loss.item()
+
+    def sync_Q_target(self):
+        """Copy weights from online network to target network"""
+        self.target_net.load_state_dict(self.net.state_dict())
+
+    def learn(self):
+        """
+        Update the Q-network with a batch of experiences
+        """
+        # Target network sync / 주기적 저장은 curr_step 기반
+        if self.curr_step % self.sync_every == 0:
+            self.sync_Q_target()
+
+        if self.curr_step % self.save_every == 0:
+            self.save()
+
+        if self.curr_step < self.burnin:
+            return None, None
+
+        if self.curr_step % self.learn_every != 0:
+            return None, None
+
+        if len(self.memory) < self.batch_size:
+            return None, None
+
+        state, next_state, action, reward, done = self.recall()
+
+        td_est = self.td_estimate(state, action)
+        td_tgt = self.td_target(reward, next_state, done)
+
+        loss = self.update_Q_online(td_est, td_tgt)
+
+        q_value = float(td_est.mean().item())
+
+        del state, next_state, action, reward, done
+        del td_est, td_tgt
+
+        if self.use_cuda and self.curr_step % 100 == 0:
+            torch.cuda.empty_cache()
+
+        if self.curr_step % 500 == 0:
+            gc.collect()
+
+        return q_value, loss
+
+    def episode_finished(self):
+        """에피소드 종료 시 호출: best checkpoint 체크"""
+        self.episode_rewards.append(self.current_episode_reward)
+
+        if len(self.episode_rewards) >= 100:
+            mean_reward = np.mean(self.episode_rewards)
+
+            if mean_reward > self.best_mean_reward:
+                old_best = self.best_mean_reward
+                self.best_mean_reward = mean_reward
+                self.save_best()
+                print(
+                    f"\n🏆 NEW BEST! Mean Reward: {mean_reward:.1f} (이전: {old_best:.1f})"
+                )
+                self.current_episode_reward = 0
+                return True
+
+        self.current_episode_reward = 0
+
+        if self.use_cuda:
+            torch.cuda.empty_cache()
+        gc.collect()
+
+        return False
+
+    def save(self):
+        """주기적 체크포인트 저장"""
+        save_path = self.save_dir / f"mario_net_{int(self.curr_step // self.save_every)}.chkpt"
+        torch.save(
+            dict(
+                model=self.net.state_dict(),
+                exploration_rate=self.exploration_rate,
+                best_mean_reward=self.best_mean_reward,
+            ),
+            save_path,
+        )
+        print(f"MarioNet saved to {save_path} at step {self.curr_step}")
+
+    def save_best(self):
+        """최고 성능 모델 저장"""
+        save_path = self.save_dir / "best_model.chkpt"
+        torch.save(
+            dict(
+                model=self.net.state_dict(),
+                exploration_rate=self.exploration_rate,
+                best_mean_reward=self.best_mean_reward,
+                step=self.curr_step,
+            ),
+            save_path,
+        )
+        print(f"   ✅ Best model saved to {save_path}")
+
+    def load(self, load_path):
+        """Load a saved checkpoint"""
+        if not load_path.exists():
+            raise ValueError(f"{load_path} does not exist")
+
+        ckp = torch.load(load_path, map_location=("cuda" if self.use_cuda else "cpu"))
+        exploration_rate = ckp.get("exploration_rate")
+        state_dict = ckp.get("model")
+        best_mean_reward = ckp.get("best_mean_reward", -float("inf"))
+
+        print(
+            f"Loading model at {load_path} with exploration rate {exploration_rate}"
+        )
+        if best_mean_reward > -float("inf"):
+            print(f"   Best mean reward from checkpoint: {best_mean_reward:.1f}")
+
+        self.net.load_state_dict(state_dict)
+        self.exploration_rate = exploration_rate
+        self.best_mean_reward = best_mean_reward
