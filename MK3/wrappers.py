@@ -1,7 +1,7 @@
 """
 환경 생성 함수 - uint8 출력 (Agent에서 정규화)
 
-⭐⭐⭐ 핵심 수정:
+핵심 수정:
 TransformObservation(/ 255.0) 제거!
 → 환경은 uint8 (0~255) 출력
 → Agent가 필요할 때 / 255.0 수행
@@ -55,7 +55,7 @@ def create_mario_env(skip_frame=4):
     """
     Mario 환경 생성 함수
     
-    ⭐⭐⭐ 중요: 환경은 uint8 (0~255) 출력!
+    중요: 환경은 uint8 (0~255) 출력!
     Agent가 필요할 때 / 255.0 수행!
     
     Args:
@@ -75,23 +75,6 @@ def create_mario_env(skip_frame=4):
     
     # Resize
     env = ResizeObservation(env, shape=84)
-    
-    # ⭐⭐⭐ [핵심 수정] TransformObservation 제거!
-    # ❌ 이전: env = TransformObservation(env, f=lambda x: x / 255.)
-    # ✅ 현재: 제거됨! 환경은 uint8 (0~255) 출력
-    #
-    # 이유:
-    # 1. Agent.cache()가 uint8로 저장
-    # 2. float 0.5 → uint8 변환 시 → 0으로 소실!
-    # 3. 또는 이중 정규화 (/ 255 두 번)
-    # 4. 치명적 문제!
-    #
-    # 해결:
-    # - 환경: uint8 (0~255) 출력
-    # - Agent.cache(): uint8 저장
-    # - Agent.act(): / 255.0 변환
-    # - Agent.recall(): / 255.0 변환
-    # → 완벽!
     
     # Frame stack
     env = FrameStack(env, num_stack=4)

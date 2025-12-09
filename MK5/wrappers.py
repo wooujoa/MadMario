@@ -1,7 +1,7 @@
 """
 환경 생성 함수 - uint8 출력 (Agent에서 정규화)
 
-⭐⭐⭐ 핵심 수정:
+핵심 수정:
 TransformObservation(/ 255.0) 제거!
 → 환경은 uint8 (0~255) 출력
 → Agent가 필요할 때 / 255.0 수행
@@ -11,7 +11,7 @@ import gym
 import gym_super_mario_bros
 from gym.wrappers import FrameStack, GrayScaleObservation
 from nes_py.wrappers import JoypadSpace
-from gym.vector import AsyncVectorEnv   # ✅ 병렬 환경용
+from gym.vector import AsyncVectorEnv   # 병렬 환경용
 import numpy as np
 
 ACTION_SPACE = [

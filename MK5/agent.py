@@ -110,23 +110,6 @@ class Mario:
             self.net = self.net.to(device="cuda")
             self.target_net = self.target_net.to(device="cuda")
 
-        print(f"\n⚙️  DUELING DQN Settings (Fixed):")
-        print(f"   Structure: CNN -> Split(Value, Advantage) -> Aggregation")
-        print(f"   Replay buffer: {self.memory.maxlen:,}")
-        print(f"   Batch size: {self.batch_size}")
-        print(f"   Burnin: {int(self.burnin):,}")
-        print(f"   Learn every: {self.learn_every} steps")
-        print(f"   Sync every: {int(self.sync_every):,}")
-        print(f"\n🎯 Exploration:")
-        print(f"   Initial rate: {self.exploration_rate}")
-        print(f"   Decay: {self.exploration_rate_decay}")
-        print(f"   Burn-in 동결: ON ✅")
-        print(f"\n🔧 안정화 기법:")
-        print(f"   Gradient Clipping: max_norm=10.0 ✅")
-        print(f"   Recursion Error Fixed ✅")
-        print(f"\n🏆 Best checkpoint tracking: ON")
-        print(f"📁 Checkpoints: {save_dir}")
-
         if checkpoint:
             self.load(checkpoint)
 

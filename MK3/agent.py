@@ -12,15 +12,12 @@ class Mario:
         self.state_dim = state_dim
         self.action_dim = action_dim
         
-        # ⭐ 원본 레포 설정 (yfeng997/MadMario)
+        # 원본 레포 설정 (yfeng997/MadMario)
         self.memory = deque(maxlen=100000)
         self.batch_size = 32
 
         self.exploration_rate = 1.0
         
-        # ⭐⭐⭐ [수정 B] 탐험률 감소 속도 더 늦춤
-        # 기존: 0.99999 (약 100만 스텝에 0.1 도달)
-        # 수정: 0.999995 (약 200만 스텝에 0.1 도달)
         self.exploration_rate_decay = 0.999995
         self.exploration_rate_min = 0.1
         self.gamma = 0.9
@@ -29,9 +26,6 @@ class Mario:
         self.burnin = 1e5    
         self.learn_every = 3
         
-        # ⭐⭐⭐ [수정 C] Target Network 동기화 주기 단축
-        # 기존: 10000 (Q값 폭발 위험)
-        # 수정: 5000 (더 안정적인 학습)
         self.sync_every = 5000
 
         self.save_every = 5e5
@@ -53,25 +47,7 @@ class Mario:
         self.net = MarioNet(self.state_dim, self.action_dim).float()
         if self.use_cuda:
             self.net = self.net.to(device='cuda')
-            
-        print(f"\n⚙️  Updated Settings (안정화 최적화):")
-        print(f"   Replay buffer: {self.memory.maxlen:,}")
-        print(f"   Batch size: {self.batch_size}")
-        print(f"   Burnin: {int(self.burnin):,}")
-        print(f"   Learn every: {self.learn_every} steps")
-        print(f"   Sync every: {int(self.sync_every):,} ⭐ 5000으로 단축!")
-        print(f"\n🎯 Exploration (핵심 수정!):")
-        print(f"   Initial rate: {self.exploration_rate}")
-        print(f"   Decay: {self.exploration_rate_decay} ⭐ 더 느리게!")
-        print(f"   Min rate: {self.exploration_rate_min}")
-        print(f"   Burn-in 동안: Epsilon 동결 ⭐⭐⭐")
-        print(f"   예상: Episode 3,000~4,000에 0.1 도달")
-        print(f"\n🔧 안정화 기법:")
-        print(f"   Gradient Clipping: max_norm=10.0 ⭐⭐⭐")
-        print(f"   메모리: uint8 (CPU) → float/255.0 (GPU)")
-        print(f"\n🏆 Best checkpoint tracking: ON")
-        print(f"📁 Checkpoints: {save_dir}")
-        
+                 
         if checkpoint:
             self.load(checkpoint)
 
@@ -83,7 +59,7 @@ class Mario:
         """
         Given a state, choose an epsilon-greedy action and update value of step.
         
-        ⭐⭐⭐ [수정 1] Burn-in 기간 동안 Epsilon 동결!
+        [수정 1] Burn-in 기간 동안 Epsilon 동결!
         """
         # EXPLORE
         if np.random.rand() < self.exploration_rate:
@@ -101,8 +77,7 @@ class Mario:
             action_values = self.net(state, model='online')
             action_idx = torch.argmax(action_values, axis=1).item()
 
-        # ⭐⭐⭐ [핵심 수정] Burn-in이 끝난 후에만 Epsilon 감소
-        # 이유: 학습 전에는 탐험률을 유지해야 다양한 경험 수집 가능
+        # 학습 전에는 탐험률을 유지해야 다양한 경험 수집 가능
         if self.curr_step >= self.burnin:
             self.exploration_rate *= self.exploration_rate_decay
             self.exploration_rate = max(self.exploration_rate_min, self.exploration_rate)
@@ -115,7 +90,7 @@ class Mario:
         """
         Store the experience to self.memory (replay buffer)
         
-        ⭐ 메모리 최적화: CPU에서 uint8로 저장 (255배 절약!)
+        메모리 최적화: CPU에서 uint8로 저장 (255배 절약!)
         """
         state = np.array(state, dtype=np.uint8)
         next_state = np.array(next_state, dtype=np.uint8)
@@ -128,8 +103,8 @@ class Mario:
         """
         Retrieve a batch of experiences from memory
         
-        ⭐⭐⭐ 핵심 최적화: CPU에서 uint8 유지, GPU에서 float 변환
-        ⭐⭐⭐ state / 255.0으로 0~1 범위로 정규화!
+        핵심 최적화: CPU에서 uint8 유지, GPU에서 float 변환
+        state / 255.0으로 0~1 범위로 정규화!
         """
         batch = random.sample(self.memory, self.batch_size)
         state, next_state, action, reward, done = zip(*batch)
@@ -150,7 +125,6 @@ class Mario:
             reward = reward.cuda()
             done = done.cuda()
         
-        # ⭐⭐⭐ float 변환 + 255로 나누기 (0~1 범위)
         return state.float() / 255.0, next_state.float() / 255.0, action, reward, done
 
 
@@ -173,15 +147,12 @@ class Mario:
         """
         Backpropagate loss through Q_online
         
-        ⭐⭐⭐ [수정 D] Gradient Clipping 추가!
+        Gradient Clipping 추가
         """
         loss = self.loss_fn(td_estimate, td_target)
         self.optimizer.zero_grad()
         loss.backward()
         
-        # ⭐⭐⭐ [핵심 추가] Gradient Clipping
-        # Q값 폭발(0→24) 방지를 위한 가장 강력한 안전장치
-        # max_norm=10: 기울기 L2 norm이 10을 넘으면 자동으로 스케일 조정
         torch.nn.utils.clip_grad_norm_(self.net.parameters(), max_norm=10.0)
         
         self.optimizer.step()

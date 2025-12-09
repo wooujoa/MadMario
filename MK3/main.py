@@ -18,10 +18,7 @@ mario = Mario(
 
 logger = MetricLogger(save_dir)
 
-# ⭐⭐⭐ 사용자가 선택! ⭐⭐⭐
-episodes = 20000  # 빠른 검증
-# episodes = 40000  # 완전한 학습
-# episodes = 60000  # 최고 성능
+episodes = 28000
 
 print(f"\n🎯 학습 목표: {episodes:,} 에피소드")
 if episodes == 20000:

@@ -70,12 +70,11 @@ class Mario:
         self.state_dim = state_dim
         self.action_dim = action_dim
         
-        # ⭐ 원본 레포 설정 (yfeng997/MadMario)
+        # 원본 레포 설정 (yfeng997/MadMario)
         self.memory = deque(maxlen=100000)
         self.batch_size = 32
 
         self.exploration_rate = 1.0
-        # ⭐⭐⭐ 탐험률 감소 속도 (안정적 학습을 위해 천천히)
         self.exploration_rate_decay = 0.999995
         self.exploration_rate_min = 0.1
         self.gamma = 0.9
@@ -83,7 +82,6 @@ class Mario:
         self.curr_step = 0
         self.burnin = 1e5    
         self.learn_every = 3
-        # ⭐⭐⭐ Target Network 동기화 주기 (5000 권장)
         self.sync_every = 5000
 
         self.save_every = 5e5
@@ -101,7 +99,6 @@ class Mario:
         else:
             print("❌ CUDA not available, using CPU")
 
-        # ⭐⭐⭐ 네트워크 초기화 (RecursionError 해결 버전)
         self.net = MarioNet(self.state_dim, self.action_dim).float()
         
         # Target Network를 별도 변수로 분리 (무한 루프 방지)
@@ -114,23 +111,6 @@ class Mario:
         if self.use_cuda:
             self.net = self.net.to(device='cuda')
             self.target_net = self.target_net.to(device='cuda') # 별도로 이동
-            
-        print(f"\n⚙️  DUELING DQN Settings (Fixed):")
-        print(f"   Structure: CNN -> Split(Value, Advantage) -> Aggregation")
-        print(f"   Replay buffer: {self.memory.maxlen:,}")
-        print(f"   Batch size: {self.batch_size}")
-        print(f"   Burnin: {int(self.burnin):,}")
-        print(f"   Learn every: {self.learn_every} steps")
-        print(f"   Sync every: {int(self.sync_every):,}")
-        print(f"\n🎯 Exploration:")
-        print(f"   Initial rate: {self.exploration_rate}")
-        print(f"   Decay: {self.exploration_rate_decay}")
-        print(f"   Burn-in 동결: ON ✅")
-        print(f"\n🔧 안정화 기법:")
-        print(f"   Gradient Clipping: max_norm=10.0 ✅")
-        print(f"   Recursion Error Fixed ✅")
-        print(f"\n🏆 Best checkpoint tracking: ON")
-        print(f"📁 Checkpoints: {save_dir}")
         
         if checkpoint:
             self.load(checkpoint)
@@ -159,7 +139,6 @@ class Mario:
             action_values = self.net(state, model='online')
             action_idx = torch.argmax(action_values, axis=1).item()
 
-        # ⭐⭐⭐ Burn-in이 끝난 후에만 Epsilon 감소
         if self.curr_step >= self.burnin:
             self.exploration_rate *= self.exploration_rate_decay
             self.exploration_rate = max(self.exploration_rate_min, self.exploration_rate)

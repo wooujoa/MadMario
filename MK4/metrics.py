@@ -2,7 +2,7 @@ import numpy as np
 import time, datetime
 from pathlib import Path
 import matplotlib
-matplotlib.use('Agg')  # ⭐ GUI 백엔드 사용 안 함 (메모리 절약)
+matplotlib.use('Agg')  # GUI 백엔드 사용 안 함 (메모리 절약)
 import matplotlib.pyplot as plt
 
 
@@ -26,7 +26,6 @@ class MetricLogger:
         # 시간
         self.record_time = time.time()
         
-        # ⭐ Matplotlib 누수 방지
         self.plot_every = 100  # 100 에피소드마다만 그래프 그리기
         
         # 로그 파일 초기화
@@ -99,7 +98,6 @@ class MetricLogger:
                 f"{datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%S'):>20}\n"
             )
         
-        # ⭐⭐⭐ 그래프는 주기적으로만 (메모리 누수 방지)
         if episode % self.plot_every == 0 and episode > 0:
             self._plot_and_save()
 
@@ -107,11 +105,11 @@ class MetricLogger:
         """
         그래프 그리기 및 저장
         
-        ⭐⭐⭐ Matplotlib 메모리 누수 방지:
+        Matplotlib 메모리 누수 방지:
         - plt.close('all') 반드시 호출
         - Figure 명시적으로 삭제
         """
-        # ⭐ 기존 그래프 모두 닫기
+        # 기존 그래프 모두 닫기
         plt.close('all')
         
         # Reward plot
@@ -132,7 +130,6 @@ class MetricLogger:
         plt.tight_layout()
         plt.savefig(self.save_dir / 'reward_plot.jpg', dpi=100)
         
-        # ⭐ Figure 명시적으로 닫기 및 삭제
         plt.close(fig)
         del fig, ax
         
@@ -154,13 +151,10 @@ class MetricLogger:
         plt.tight_layout()
         plt.savefig(self.save_dir / 'loss_plot.jpg', dpi=100)
         
-        # ⭐ Figure 명시적으로 닫기 및 삭제
         plt.close(fig)
         del fig, ax
         
-        # ⭐ 모든 그래프 닫기 (안전장치)
         plt.close('all')
         
-        # ⭐ Python GC 호출 (메모리 정리)
         import gc
         gc.collect()

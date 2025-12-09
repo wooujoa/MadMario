@@ -13,13 +13,10 @@ env = SkipFrame(env, skip=4)
 env = GrayScaleObservation(env, keep_dim=False)
 env = ResizeObservation(env, shape=84)
 
-# ⭐⭐⭐ [핵심 수정] TransformObservation 삭제! ⭐⭐⭐
-# env = TransformObservation(env, f=lambda x: x / 255.)  <-- 이거 지워야 마리오가 앞을 봅니다.
 
 env = FrameStack(env, num_stack=4)
 env.reset()
 
-# 2. 체크포인트 로드
 # 경로가 맞는지 확인하세요 (파일이 실제로 존재하는지)
 checkpoint_path = Path('/home/jwg/MadMario/MK4/checkpoints/DuelingDDQN/best_model.chkpt')
 
@@ -33,9 +30,7 @@ mario = Mario(
     checkpoint=checkpoint_path
 )
 
-# ⭐⭐⭐ [핵심 수정] 탐험률 0% 설정 (랜덤 행동 금지) ⭐⭐⭐
 mario.exploration_rate = 0.0
-# 학습 모드가 아니므로 burnin도 해제
 mario.burnin = 0 
 
 print("🎮 Test Drive Start!")
@@ -54,9 +49,6 @@ for e in range(episodes):
         action = mario.act(state)
 
         next_state, reward, done, info = env.step(action)
-        
-        # 테스트 때는 cache(저장)나 learn(학습)을 하지 않습니다.
-        # mario.cache(...) -> 삭제
         
         total_reward += reward
         state = next_state

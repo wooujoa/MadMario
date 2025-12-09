@@ -4,7 +4,7 @@ import torch
 
 from metrics import MetricLogger
 from agent import Mario
-from wrappers import create_mario_vec_env   # ✅ 병렬 환경 생성 함수
+from wrappers import create_mario_vec_env   # 병렬 환경 생성 함수
 
 # -----------------------------
 # 1. 환경 / 에이전트 초기화
