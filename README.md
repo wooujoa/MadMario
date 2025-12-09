@@ -61,7 +61,7 @@
 1. **레포지토리 클론**
 ```bash
    git clone <(https://github.com/wooujoa/MadMario.git)>
-   cd <YOUR_REPOSITORY_NAME> #MK1, MK2, MK3
+   cd MadMario
 ```
 
 2. **Conda 환경 생성**
