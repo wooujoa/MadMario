@@ -90,7 +90,6 @@
 **실행:**
 ```bash
 cd MK3
-python main.py
 ```
 
 ### 📂 MK4 - Improved Agent
@@ -104,7 +103,6 @@ python main.py
 **실행:**
 ```bash
 cd MK4
-python main.py
 ```
 
 ### 📂 MK5 - Advanced Agent
@@ -118,7 +116,6 @@ python main.py
 **실행:**
 ```bash
 cd MK5
-python main.py
 ```
 
 ---
