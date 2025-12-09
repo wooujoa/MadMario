@@ -143,6 +143,9 @@ python main.py
 
 학습된 가중치를 불러와 에이전트의 플레이를 확인합니다.
 
+사전 학습이 완료된 MK3,4,5 가중치 파일
+https://drive.google.com/drive/folders/1_iWydIyRkmOEnvTrQZ3GDtvRONfUd-gA?usp=drive_link
+
 **설정 방법:**
 1. `replay.py` 파일 열기
 2. 체크포인트 경로 수정:
