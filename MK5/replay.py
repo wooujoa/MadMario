@@ -28,7 +28,7 @@ env.reset()
 
 # 2. 체크포인트 로드
 # 경로가 맞는지 확인하세요 (파일이 실제로 존재하는지)
-checkpoint_path = Path('/home/jwg/MadMario/MK5/checkpoints/2025-12-09T07-23-50/best_model.chkpt')
+checkpoint_path = Path('/home/jwg/Desktop/MadMario/MK5/checkpoints/2025-12-09T07-23-50/best_model.chkpt')
 
 # 저장할 필요 없으니 save_dir은 아무거나
 save_dir = Path('checkpoints') 
